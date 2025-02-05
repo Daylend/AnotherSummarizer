@@ -37,7 +37,7 @@ A Firefox extension that automatically fetches the transcript of any YouTube vid
 
 1. **Clone or Download the Repository**
    ```bash
-   git clone https://github.com/yourusername/YouTube-Video-Summarizer.git
+   git clone https://github.com/Daylend/AnotherSummarizer.git
    ```
 
 2. **Load the Extension in Firefox**
