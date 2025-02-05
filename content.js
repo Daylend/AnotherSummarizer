@@ -37,7 +37,6 @@ function ensureContainerOnScreen(container) {
   const rect = container.getBoundingClientRect();
   let newLeft = rect.left;
   let newTop = rect.top;
-
   if (rect.left < 0) {
     newLeft = 0;
   }
@@ -56,7 +55,6 @@ function ensureContainerOnScreen(container) {
 
 // Create a sleek loading indicator in the bottom right.
 function createLoadingIndicator() {
-  // Remove any existing indicator.
   const existing = document.getElementById("summary-loading-indicator");
   if (existing) existing.remove();
 
@@ -78,7 +76,6 @@ function createLoadingIndicator() {
 
 // Create the summary container (draggable & resizable) that displays the summary.
 async function createSummaryContainer() {
-  // Remove any existing container.
   const oldContainer = document.getElementById("video-summary-container");
   if (oldContainer) oldContainer.remove();
 
@@ -86,7 +83,6 @@ async function createSummaryContainer() {
   container.id = "video-summary-container";
   container.style.position = "fixed";
 
-  // Restore saved state (position and size) if available.
   const savedState = await browser.storage.sync.get("videoSummaryBoxState");
   if (savedState.videoSummaryBoxState) {
     container.style.left = savedState.videoSummaryBoxState.left;
@@ -100,10 +96,8 @@ async function createSummaryContainer() {
     container.style.height = "300px";
   }
 
-  // Optional: set minimum dimensions to ensure usability.
   container.style.minWidth = "200px";
   container.style.minHeight = "100px";
-
   container.style.backgroundColor = "rgba(0, 0, 0, 0.95)";
   container.style.color = "#fff";
   container.style.borderRadius = "8px";
@@ -111,14 +105,10 @@ async function createSummaryContainer() {
   container.style.fontSize = "14px";
   container.style.lineHeight = "1.5";
   container.style.boxShadow = "0 0 10px rgba(0,0,0,0.5)";
-  // Prevent the container itself from scrolling.
   container.style.overflow = "hidden";
-
-  // Use flex layout so that the header and content are separated.
   container.style.display = "flex";
   container.style.flexDirection = "column";
 
-  // Create header (drag handle + refresh button)
   const header = document.createElement("div");
   header.style.display = "flex";
   header.style.justifyContent = "space-between";
@@ -127,7 +117,7 @@ async function createSummaryContainer() {
   header.style.backgroundColor = "rgba(255, 255, 255, 0.1)";
   header.style.padding = "8px 10px";
   header.style.borderRadius = "8px 8px 0 0";
-  header.style.userSelect = "none"; // Prevent text selection during dragging
+  header.style.userSelect = "none";
   
   const title = document.createElement("span");
   title.textContent = "Video Summary (Drag me)";
@@ -142,26 +132,21 @@ async function createSummaryContainer() {
   refreshButton.style.cursor = "pointer";
   refreshButton.style.fontSize = "14px";
   refreshButton.style.marginLeft = "10px";
-  // When clicked, force a refresh of the summary.
   refreshButton.addEventListener("click", function(e) {
-    e.stopPropagation(); // Prevent triggering drag events.
+    e.stopPropagation();
     summarizeVideo(true);
   });
   header.appendChild(refreshButton);
   
-  // Add the header to the container.
   container.appendChild(header);
 
-  // Create a scrollable content area for the summary text.
   const content = document.createElement("div");
   content.id = "video-summary-content";
   content.style.padding = "15px";
   content.style.overflowY = "auto";
-  // Let the content area fill the remaining space.
   content.style.flex = "1";
   container.appendChild(content);
 
-  // Create the resizer handle.
   const resizer = document.createElement("div");
   resizer.style.width = "16px";
   resizer.style.height = "16px";
@@ -172,16 +157,14 @@ async function createSummaryContainer() {
   resizer.style.cursor = "se-resize";
   container.appendChild(resizer);
 
-  // Append the container to the document.
   document.body.appendChild(container);
 
   // Immediately ensure the container is within the viewport.
   ensureContainerOnScreen(container);
   saveSummaryBoxState(container);
 
-  /* --- Draggable functionality --- */
   header.addEventListener('mousedown', function(e) {
-    e.preventDefault(); // Prevent text selection
+    e.preventDefault();
     const rect = container.getBoundingClientRect();
     const offsetX = e.clientX - rect.left;
     const offsetY = e.clientY - rect.top;
@@ -194,7 +177,6 @@ async function createSummaryContainer() {
     function onMouseUp() {
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
-      // Ensure container remains within viewport after dragging.
       ensureContainerOnScreen(container);
       saveSummaryBoxState(container);
     }
@@ -203,7 +185,6 @@ async function createSummaryContainer() {
     document.addEventListener('mouseup', onMouseUp);
   });
 
-  /* --- Resizable functionality --- */
   resizer.addEventListener('mousedown', function(e) {
     e.preventDefault();
     const startX = e.clientX;
@@ -221,7 +202,6 @@ async function createSummaryContainer() {
     function onMouseUp() {
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
-      // Ensure container remains within viewport after resizing.
       ensureContainerOnScreen(container);
       saveSummaryBoxState(container);
     }
@@ -236,48 +216,46 @@ async function createSummaryContainer() {
 // Main function to handle summarization.
 // Accepts an optional forceRefresh parameter; if true, bypass duplicate-check.
 async function summarizeVideo(forceRefresh = false) {
-  // Prevent duplicate requests unless forced.
   if (!forceRefresh && window.location.href === lastSummarizedUrl) {
     console.log("Already summarized this video. Skipping duplicate request.");
     return;
   }
   lastSummarizedUrl = window.location.href;
 
-  // Remove any existing summary container or loading indicator.
   const existingContainer = document.getElementById("video-summary-container");
   if (existingContainer) existingContainer.remove();
   const existingIndicator = document.getElementById("summary-loading-indicator");
   if (existingIndicator) existingIndicator.remove();
 
-  // Create the sleek loading indicator.
   const loadingIndicator = createLoadingIndicator();
 
   try {
-    // Retrieve the API key from storage.
-    const stored = await browser.storage.sync.get("apiKey");
+    // Retrieve the API key and Open WebUI domain from storage.
+    const stored = await browser.storage.sync.get(["apiKey", "openWebuiDomain"]);
     const apiKey = stored.apiKey;
+    const openWebuiDomain = stored.openWebuiDomain;
     if (!apiKey) {
       loadingIndicator.innerHTML = "API key not set. Please set it in the options.";
       console.warn("API key not set. Please set it in the extension options.");
       return;
     }
+    if (!openWebuiDomain) {
+      loadingIndicator.innerHTML = "Open WebUI domain not set. Please set it in the options.";
+      console.warn("Open WebUI domain not set.");
+      return;
+    }
     
-    // Ensure we are on a YouTube video page.
     if (!window.location.href.includes("youtube.com/watch")) return;
 
-    // Wait for the "Show transcript" button and click it.
     const transcriptButton = await waitForElement("yt-button-shape button[aria-label='Show transcript']");
     transcriptButton.click();
     console.log("Clicked 'Show transcript' button");
     
-    // Wait for the transcript container to appear.
     await waitForElement("ytd-transcript-renderer");
     console.log("Transcript container appeared");
     
-    // Allow extra time for the transcript content to load.
     await new Promise(resolve => setTimeout(resolve, 1000));
     
-    // Extract transcript text from each segment.
     const segments = document.querySelectorAll("ytd-transcript-segment-renderer yt-formatted-string.segment-text");
     if (!segments.length) {
       loadingIndicator.innerHTML = "No transcript segments found.";
@@ -289,8 +267,6 @@ async function summarizeVideo(forceRefresh = false) {
       .join(" ");
     console.log("Transcript extracted:", transcriptText);
     
-    // Hide the transcript from the user.
-    // Wait for the "Close transcript" button inside the element with id "visibility-button" and click it.
     try {
       const closeTranscriptButton = await waitForElement("#visibility-button button[aria-label='Close transcript']");
       closeTranscriptButton.click();
@@ -299,8 +275,9 @@ async function summarizeVideo(forceRefresh = false) {
       console.warn("Failed to close transcript:", e);
     }
     
-    // Send transcript to Open WebUI for summarization.
-    const response = await fetch("https://localhost:3000/api/chat/completions", {
+    // Build the API URL dynamically using the user-specified domain.
+    const apiUrl = `${openWebuiDomain}/api/chat/completions`;
+    const response = await fetch(apiUrl, {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${apiKey}`,
@@ -319,16 +296,13 @@ async function summarizeVideo(forceRefresh = false) {
     }
     const data = await response.json();
     
-    // Extract the summary (removing any <think> tags).
     let content = data.choices[0].message.content;
     content = content.replace(/<think>[\s\S]*?<\/think>/, '').trim();
     const summaryMarkdown = content || "No summary returned";
     console.log("Summary (markdown) received:", summaryMarkdown);
     
-    // Convert markdown to HTML using the local marked library.
     const summaryHTML = marked.parse(summaryMarkdown);
     
-    // On success, remove the loading indicator and show the summary container.
     loadingIndicator.remove();
     const summaryContainer = await createSummaryContainer();
     const summaryContent = summaryContainer.querySelector("#video-summary-content");
@@ -354,12 +328,10 @@ document.addEventListener("yt-navigate-finish", () => {
   }
 });
   
-// Initial run if we are on a YouTube video page.
 if (window.location.href.includes("youtube.com/watch")) {
   summarizeVideo();
 }
 
-// Add an event listener to reposition the summary container when the browser window is resized.
 window.addEventListener("resize", () => {
   console.log("Window resized");
   const container = document.getElementById("video-summary-container");
