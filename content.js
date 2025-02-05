@@ -32,6 +32,28 @@ function saveSummaryBoxState(container) {
   browser.storage.sync.set({ videoSummaryBoxState: state });
 }
 
+// Helper: Ensure the container stays within the viewport.
+function ensureContainerOnScreen(container) {
+  const rect = container.getBoundingClientRect();
+  let newLeft = rect.left;
+  let newTop = rect.top;
+
+  if (rect.left < 0) {
+    newLeft = 0;
+  }
+  if (rect.top < 0) {
+    newTop = 0;
+  }
+  if (rect.right > window.innerWidth) {
+    newLeft = window.innerWidth - rect.width;
+  }
+  if (rect.bottom > window.innerHeight) {
+    newTop = window.innerHeight - rect.height;
+  }
+  container.style.left = newLeft + "px";
+  container.style.top = newTop + "px";
+}
+
 // Create a sleek loading indicator in the bottom right.
 function createLoadingIndicator() {
   // Remove any existing indicator.
@@ -77,6 +99,10 @@ async function createSummaryContainer() {
     container.style.width = "400px";
     container.style.height = "300px";
   }
+
+  // Optional: set minimum dimensions to ensure usability.
+  container.style.minWidth = "200px";
+  container.style.minHeight = "100px";
 
   container.style.backgroundColor = "rgba(0, 0, 0, 0.95)";
   container.style.color = "#fff";
@@ -149,6 +175,10 @@ async function createSummaryContainer() {
   // Append the container to the document.
   document.body.appendChild(container);
 
+  // Immediately ensure the container is within the viewport.
+  ensureContainerOnScreen(container);
+  saveSummaryBoxState(container);
+
   /* --- Draggable functionality --- */
   header.addEventListener('mousedown', function(e) {
     e.preventDefault(); // Prevent text selection
@@ -164,6 +194,8 @@ async function createSummaryContainer() {
     function onMouseUp() {
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
+      // Ensure container remains within viewport after dragging.
+      ensureContainerOnScreen(container);
       saveSummaryBoxState(container);
     }
     
@@ -189,6 +221,8 @@ async function createSummaryContainer() {
     function onMouseUp() {
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
+      // Ensure container remains within viewport after resizing.
+      ensureContainerOnScreen(container);
       saveSummaryBoxState(container);
     }
     
@@ -324,3 +358,14 @@ document.addEventListener("yt-navigate-finish", () => {
 if (window.location.href.includes("youtube.com/watch")) {
   summarizeVideo();
 }
+
+// Add an event listener to reposition the summary container when the browser window is resized.
+window.addEventListener("resize", () => {
+  console.log("Window resized");
+  const container = document.getElementById("video-summary-container");
+  if (container) {
+    ensureContainerOnScreen(container);
+    saveSummaryBoxState(container);
+    console.log("Container repositioned to:", container.style.left, container.style.top);
+  }
+});
