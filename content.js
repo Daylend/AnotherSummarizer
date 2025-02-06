@@ -60,6 +60,7 @@ function createLoadingIndicator() {
 
   const indicator = document.createElement("div");
   indicator.id = "summary-loading-indicator";
+  // This is static text so it's safe.
   indicator.innerHTML = "Loading summary...";
   indicator.style.position = "fixed";
   indicator.style.bottom = "10px";
@@ -301,12 +302,14 @@ async function summarizeVideo(forceRefresh = false) {
     const summaryMarkdown = content || "No summary returned";
     console.log("Summary (markdown) received:", summaryMarkdown);
     
+    // Convert markdown to HTML using marked and sanitize the output with DOMPurify.
     const summaryHTML = marked.parse(summaryMarkdown);
+    const safeHTML = DOMPurify.sanitize(summaryHTML);
     
     loadingIndicator.remove();
     const summaryContainer = await createSummaryContainer();
     const summaryContent = summaryContainer.querySelector("#video-summary-content");
-    summaryContent.innerHTML = summaryHTML;
+    summaryContent.innerHTML = safeHTML;
   } catch (error) {
     console.error("YouTube Summarizer error:", error);
     loadingIndicator.innerHTML = "Error generating summary.";

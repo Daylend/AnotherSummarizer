@@ -22,7 +22,7 @@
     "content_scripts": [
       {
         "matches": ["*://*.youtube.com/*"],
-        "js": ["vendor/marked.min.js", "content.js"],
+        "js": ["vendor/marked.min.js", "vendor/purify.min.js", "content.js"],
         "run_at": "document_idle"
       }
     ],
