@@ -1,7 +1,10 @@
 {
     "manifest_version": 3,
-    "name": "YouTube Video Summarizer",
+    "name": "YouTube Summarizer via Open WebUI",
     "version": "1.1",
+    "icons": {
+        "50": "logo.png"
+    },
     "description": "Automatically fetches the transcript of a YouTube video, summarizes it via Open WebUI, and displays the summary. Includes a settings page for your API key and Open WebUI domain.",
     "permissions": [
       "activeTab",
