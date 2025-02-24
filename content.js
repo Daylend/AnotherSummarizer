@@ -1,5 +1,6 @@
-// Global variable to track the last summarized video URL.
+// Global variables to track the last summarized video URL and cached transcript.
 let lastSummarizedUrl = "";
+let storedTranscript = "";
 
 // Utility: Wait for a DOM element to appear matching the selector.
 function waitForElement(selector, timeout = 10000) {
@@ -22,7 +23,9 @@ function waitForElement(selector, timeout = 10000) {
 }
 
 // Helper: Save the summary container's state (position and size) to storage.
+// Note: if the container is minimized, state is not saved.
 function saveSummaryBoxState(container) {
+  if (container.dataset.minimized === "true") return;
   const state = {
     left: container.style.left,
     top: container.style.top,
@@ -60,7 +63,6 @@ function createLoadingIndicator() {
 
   const indicator = document.createElement("div");
   indicator.id = "summary-loading-indicator";
-  // This is static text so it's safe.
   indicator.innerHTML = "Loading summary...";
   indicator.style.position = "fixed";
   indicator.style.bottom = "10px";
@@ -83,6 +85,8 @@ async function createSummaryContainer() {
   const container = document.createElement("div");
   container.id = "video-summary-container";
   container.style.position = "fixed";
+  // Mark container as not minimized.
+  container.dataset.minimized = "false";
 
   const savedState = await browser.storage.sync.get("videoSummaryBoxState");
   if (savedState.videoSummaryBoxState) {
@@ -124,6 +128,10 @@ async function createSummaryContainer() {
   title.textContent = "Video Summary (Drag me)";
   header.appendChild(title);
 
+  // Button container to hold action buttons.
+  const buttonContainer = document.createElement("div");
+
+  // Refresh button (uses stored transcript).
   const refreshButton = document.createElement("button");
   refreshButton.textContent = "⟳";
   refreshButton.title = "Refresh summary";
@@ -135,10 +143,91 @@ async function createSummaryContainer() {
   refreshButton.style.marginLeft = "10px";
   refreshButton.addEventListener("click", function(e) {
     e.stopPropagation();
+    // Force re-summarization using the stored transcript.
     summarizeVideo(true);
   });
-  header.appendChild(refreshButton);
-  
+  buttonContainer.appendChild(refreshButton);
+
+  // Clipboard button to copy transcript text.
+  const clipboardButton = document.createElement("button");
+  clipboardButton.textContent = "📋";
+  clipboardButton.title = "Copy transcript to clipboard";
+  clipboardButton.style.border = "none";
+  clipboardButton.style.background = "transparent";
+  clipboardButton.style.color = "#fff";
+  clipboardButton.style.cursor = "pointer";
+  clipboardButton.style.fontSize = "14px";
+  clipboardButton.style.marginLeft = "10px";
+  clipboardButton.addEventListener("click", function(e) {
+    e.stopPropagation();
+    if (storedTranscript) {
+      navigator.clipboard.writeText(storedTranscript).then(() => {
+        console.log("Transcript copied to clipboard.");
+      }).catch(err => {
+        console.error("Error copying transcript:", err);
+      });
+    } else {
+      console.warn("No transcript available to copy.");
+    }
+  });
+  buttonContainer.appendChild(clipboardButton);
+
+  // Minimize/Maximize button to toggle container state.
+  const minimizeButton = document.createElement("button");
+  minimizeButton.textContent = "−"; // Initially showing minimize icon.
+  minimizeButton.title = "Minimize summary";
+  minimizeButton.style.border = "none";
+  minimizeButton.style.background = "transparent";
+  minimizeButton.style.color = "#fff";
+  minimizeButton.style.cursor = "pointer";
+  minimizeButton.style.fontSize = "14px";
+  minimizeButton.style.marginLeft = "10px";
+  minimizeButton.addEventListener("click", function(e) {
+    e.stopPropagation();
+    const content = container.querySelector("#video-summary-content");
+    const resizer = container.querySelector("div[style*='cursor: se-resize']");
+    const minWidth = 300; // fixed minimized width in pixels
+    const minHeight = 30; // fixed minimized height in pixels
+    if (container.dataset.minimized !== "true") {
+      // Save the current (original) state.
+      container.dataset.originalLeft = container.style.left;
+      container.dataset.originalTop = container.style.top;
+      container.dataset.originalWidth = container.style.width;
+      container.dataset.originalHeight = container.style.height;
+      // Change to minimized state: a small bar at the bottom right.
+      container.style.width = minWidth + "px";
+      container.style.height = minHeight + "px";
+      container.style.left = (window.innerWidth - minWidth) + "px";
+      container.style.top = (window.innerHeight - minHeight) + "px";
+      container.dataset.minimized = "true";
+      // Hide content and resizer.
+      content.style.display = "none";
+      if (resizer) resizer.style.display = "none";
+      // Update button to show maximize option.
+      minimizeButton.textContent = "☐";
+      minimizeButton.title = "Maximize summary";
+    } else {
+      // Restore the original state.
+      container.style.left = container.dataset.originalLeft || "20px";
+      container.style.top = container.dataset.originalTop || "20px";
+      container.style.width = container.dataset.originalWidth || "400px";
+      container.style.height = container.dataset.originalHeight || "300px";
+      container.dataset.minimized = "false";
+      // Show content and resizer.
+      content.style.display = "block";
+      if (resizer) resizer.style.display = "block";
+      // Update button to show minimize option.
+      minimizeButton.textContent = "−";
+      minimizeButton.title = "Minimize summary";
+      // Ensure the container is fully within the viewport
+      ensureContainerOnScreen(container);
+      // Save the restored state.
+      saveSummaryBoxState(container);
+    }
+  });
+  buttonContainer.appendChild(minimizeButton);
+
+  header.appendChild(buttonContainer);
   container.appendChild(header);
 
   const content = document.createElement("div");
@@ -164,6 +253,7 @@ async function createSummaryContainer() {
   ensureContainerOnScreen(container);
   saveSummaryBoxState(container);
 
+  // Make the container draggable.
   header.addEventListener('mousedown', function(e) {
     e.preventDefault();
     const rect = container.getBoundingClientRect();
@@ -186,6 +276,7 @@ async function createSummaryContainer() {
     document.addEventListener('mouseup', onMouseUp);
   });
 
+  // Make the container resizable.
   resizer.addEventListener('mousedown', function(e) {
     e.preventDefault();
     const startX = e.clientX;
@@ -248,32 +339,40 @@ async function summarizeVideo(forceRefresh = false) {
     
     if (!window.location.href.includes("youtube.com/watch")) return;
 
-    const transcriptButton = await waitForElement("yt-button-shape button[aria-label='Show transcript']");
-    transcriptButton.click();
-    console.log("Clicked 'Show transcript' button");
-    
-    await waitForElement("ytd-transcript-renderer");
-    console.log("Transcript container appeared");
-    
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    const segments = document.querySelectorAll("ytd-transcript-segment-renderer yt-formatted-string.segment-text");
-    if (!segments.length) {
-      loadingIndicator.innerHTML = "No transcript segments found.";
-      console.warn("No transcript segments found.");
-      return;
-    }
-    const transcriptText = Array.from(segments)
-      .map(seg => seg.textContent.trim())
-      .join(" ");
-    console.log("Transcript extracted:", transcriptText);
-    
-    try {
-      const closeTranscriptButton = await waitForElement("#visibility-button button[aria-label='Close transcript']");
-      closeTranscriptButton.click();
-      console.log("Transcript closed/hid.");
-    } catch (e) {
-      console.warn("Failed to close transcript:", e);
+    let transcriptText = "";
+    if (!storedTranscript) {
+      // Retrieve transcript only if not already stored.
+      const transcriptButton = await waitForElement("yt-button-shape button[aria-label='Show transcript']");
+      transcriptButton.click();
+      console.log("Clicked 'Show transcript' button");
+      
+      await waitForElement("ytd-transcript-renderer");
+      console.log("Transcript container appeared");
+      
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      const segments = document.querySelectorAll("ytd-transcript-segment-renderer yt-formatted-string.segment-text");
+      if (!segments.length) {
+        loadingIndicator.innerHTML = "No transcript segments found.";
+        console.warn("No transcript segments found.");
+        return;
+      }
+      storedTranscript = Array.from(segments)
+        .map(seg => seg.textContent.trim())
+        .join(" ");
+      console.log("Transcript extracted and stored:", storedTranscript);
+      
+      try {
+        const closeTranscriptButton = await waitForElement("#visibility-button button[aria-label='Close transcript']");
+        closeTranscriptButton.click();
+        console.log("Transcript closed/hid.");
+      } catch (e) {
+        console.warn("Failed to close transcript:", e);
+      }
+      transcriptText = storedTranscript;
+    } else {
+      console.log("Using stored transcript.");
+      transcriptText = storedTranscript;
     }
     
     // Build the API URL dynamically using the user-specified domain.
@@ -323,6 +422,8 @@ document.addEventListener("yt-navigate-start", () => {
   if (oldContainer) oldContainer.remove();
   const oldIndicator = document.getElementById("summary-loading-indicator");
   if (oldIndicator) oldIndicator.remove();
+  // Reset the stored transcript when navigating to a new video.
+  storedTranscript = "";
 });
   
 document.addEventListener("yt-navigate-finish", () => {
@@ -335,12 +436,21 @@ if (window.location.href.includes("youtube.com/watch")) {
   summarizeVideo();
 }
 
+// Update container position on window resize.
+// If minimized, adjust its position so it stays at the bottom right.
 window.addEventListener("resize", () => {
   console.log("Window resized");
   const container = document.getElementById("video-summary-container");
   if (container) {
-    ensureContainerOnScreen(container);
-    saveSummaryBoxState(container);
+    if (container.dataset.minimized === "true") {
+      const minWidth = 300;
+      const minHeight = 30;
+      container.style.left = (window.innerWidth - minWidth) + "px";
+      container.style.top = (window.innerHeight - minHeight) + "px";
+    } else {
+      ensureContainerOnScreen(container);
+      saveSummaryBoxState(container);
+    }
     console.log("Container repositioned to:", container.style.left, container.style.top);
   }
 });
